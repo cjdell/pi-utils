@@ -62,7 +62,7 @@ utils_setup_ssh_keys() {
 utils_setup_ssh_remote_control() {
     echo "Enter IP address of Raspberry Pi to gain access to: "
     read ip
-    cat ~/.ssh/id_dsa.pub | ssh $ip 'cat >> /home/pi/.ssh/authorized_keys'
+    cat ~/.ssh/id_dsa.pub | ssh $ip 'mkdir -p /home/pi/.ssh && cat >> /home/pi/.ssh/authorized_keys'
 
     echo "If successful, you should now be able to SSH/SCP without a password"
 }
