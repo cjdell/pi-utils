@@ -2,11 +2,39 @@
 
 # Author: Chris Dell (cjdell@gmail.com) @cjdell
 
-# USAGE: source ./pi-utils.sh
+# Usage (just this shell): source pi-utils.sh"
+# Usage (permanent)      : ./pi-utils.sh install"
+
 # All functions are prefixed with "util_" prefix (Use bash completion/tabbing to display them all)
 
-# NOTICE: Make sure this is the correct path for this script
-utils_script_path=~/Sync/pi-utils/pi-utils.sh
+utils_script_path=$BASH_SOURCE
+
+# Qualify the script path if necessary to make it absolute
+if [ ${utils_script_path:0:1} != "/" ]; then    
+    utils_script_path=$(pwd)/$utils_script_path
+fi
+
+# Get the directory of the script as well
+utils_script_dir=$(dirname $utils_script_path)
+
+echo "pi-utils script path: $utils_script_path"
+
+# Check if we're running from the shell
+if [ -z $BASH_SOURCE ] || [ $0 == $BASH_SOURCE ]; then
+    
+    # Install script...
+    if [ "$1" == "install" ]; then
+        echo "source $(readlink -f $0)" >> ~/.bashrc
+        echo "Util scripts will now be permanently available"
+        exit
+    else
+        # Otherwise print usage
+        echo "Usage (just this shell): source pi-utils.sh"
+        echo "Usage (permanent)      : ./pi-utils.sh install"
+        exit
+    fi    
+    
+fi
 
 # This is the address this Pi will assume when acting as a DHCP server
 dhcp_server_ip=192.168.0.10
@@ -99,7 +127,7 @@ utils_copy_os_image_to_pi() {
     sync
     # We can now write the image to the other Pi
     echo "Copying image..."
-    sudo pv /dev/mmcblk0 | gzip --fast | ssh $ip 'sudo bash -c "gzip -d > /dev/mmcblk0"'
+    sudo pv /dev/mmcblk0 | ssh $ip 'sudo bash -c "cat > /dev/mmcblk0"'
     ssh $ip "sudo reboot"
     echo "Pi rebooting with new image..."
 }
