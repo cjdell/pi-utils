@@ -105,8 +105,9 @@ utils_copy_utils_to_pi() {
     echo "Please ensure you have remote control of the target Raspberry Pi"
     echo "Enter IP address of Raspberry Pi to copy script to: "
     read ip
-    ssh $ip 'mkdir -p /home/pi/Sync/pi-utils'
-    scp $utils_script_path $ip:~/Sync/pi-utils/pi-utils.sh
+    ssh $ip "mkdir -p $utils_script_dir"
+    scp $utils_script_path $ip:$utils_script_path
+    ssh $ip "bash $utils_script_path install"
 }
 
 # EXPERIMENTAL: Copy this OS image to another Raspberry IN PLACE
