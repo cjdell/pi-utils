@@ -39,6 +39,9 @@ fi
 # This is the address this Pi will assume when acting as a DHCP server
 dhcp_server_ip=192.168.0.10
 
+# This is the prefix MAC address for all Raspberry Pi's
+mac_address_prefix=B8:27:EB
+
 # To have these functions available globally and on boot please run this:
 utils_install_utils() {
     echo "source $utils_script_path" >> ~/.bashrc
@@ -83,14 +86,24 @@ utils_setup_ssh_keys() {
     ssh-keygen -t dsa
     chmod 700 ~/.ssh
 
+    # Give me access to myself (for when this image is cloned)
     cat ~/.ssh/id_dsa.pub >> ~/.ssh/authorized_keys
 }
 
 # This will allow remote control of another Raspberry Pi
 utils_setup_ssh_remote_control() {
+    if [ ! -f ~/.ssh/id_dsa.pub ]; then
+        echo "Please first run: utils_setup_ssh_keys"
+        return
+    fi
+    
     echo "Enter IP address of Raspberry Pi to gain access to: "
     read ip
     cat ~/.ssh/id_dsa.pub | ssh $ip 'mkdir -p /home/pi/.ssh && cat >> /home/pi/.ssh/authorized_keys'
+    
+    # These lines aren't necessary but they will allow the remote Pi to SSH on to this Pi
+    cat ~/.ssh/id_dsa.pub | ssh $ip 'cat >> /home/pi/.ssh/id_dsa.pub'
+    cat ~/.ssh/id_dsa | ssh $ip 'cat >> /home/pi/.ssh/id_dsa'
 
     echo "If successful, you should now be able to SSH/SCP without a password"
 }
@@ -115,21 +128,28 @@ utils_copy_os_image_to_pi() {
     echo "Please ensure you have remote control of the target Raspberry Pi"
     echo "Enter IP address of Raspberry Pi to copy OS image to: "
     read ip
-    
-    # If we're cloning the OS then this security check can cause problems
-    #rm ~/.ssh/known_hosts
 
     # Alter fstab entry so that the other Pi will reboot with SD card read only
     ssh $ip "sudo sed -i 's/noatime/noatime,ro/g' /etc/fstab"
     if [ $? -ne 0 ]; then echo "SSH failed"; exit $?; fi
     ssh $ip "sudo reboot"
     echo "Pi rebooting in read only mode..."
+    
+    # Wait for it to come back up
     sleep 60
+    
+    # Prepare target for instant reboot
+    ssh $ip "sudo bash -c 'echo 1 > /proc/sys/kernel/sysrq'"
+    
+    # Sync local filesystem so that it is intact
     sync
+    
     # We can now write the image to the other Pi
     echo "Copying image..."
     sudo pv /dev/mmcblk0 | ssh $ip 'sudo bash -c "cat > /dev/mmcblk0"'
-    ssh $ip "sudo reboot"
+    
+    # Reboot magically
+    ssh $ip "sudo bash -c 'echo b > /proc/sysrq-trigger'" &
     echo "Pi rebooting with new image..."
 }
 
@@ -169,18 +189,20 @@ utils_get_local_ip() {
 }
 
 # Uses nmap to look for other pis on this subnet
+# Human readable output, usage: utils_find_pis
+# Machine readable list usage:  utils_find_pis ip_list
 utils_find_pis() {
-    echo "Looking for other pis"
-
     local_ip_cidr=$(utils_get_local_ip_cidr)
     local_ip=$(utils_get_local_ip)
 
-    echo "Local IP: $local_ip"
+    if [ "$1" != "ip_list" ]; then
+        echo "Looking for other pis"
+        echo "Local IP: $local_ip"
+    fi
 
     # Scan the subnet and save the output to a file
     sudo nmap -sn -sP $local_ip_cidr > ~/scan.txt
 
-    echo "=============================="
     while read line; do
         if [[ $line == Nmap\ scan* ]]; then
             ip=${line##* }
@@ -191,19 +213,28 @@ utils_find_pis() {
 
             # Local IP has entry with only two lines so we need to watch out for this
             if [ $ip != $local_ip ]; then
-                echo "IP  Address: $ip"
                 read line
                 mac=${line##*Address: }
                 mac=${mac:0:17}
-                echo "MAC Address: $mac"
-
-                if [ ${mac:0:8} == "B8:27:EB" ]; then
-                    echo -e '--- \E[47;35m'"\033[1mThis is a Raspberry Pi\033[0m ---"
+        
+                if [ "$1" == "ip_list" ]; then
+                    if [ ${mac:0:8} == "$mac_address_prefix" ]; then
+                        echo $ip
+                    fi
                 else
-                    echo "This is another kind of device"
-                fi
+                    echo "=============================="
+                    echo "IP  Address: $ip"        
+                    echo "MAC Address: $mac"
 
-                echo "=============================="
+                    # It is a Raspberry Pi
+                    if [ ${mac:0:8} == "$mac_address_prefix" ]; then
+                        echo -e '--- \E[47;35m'"\033[1mThis is a Raspberry Pi\033[0m ---"
+                    else
+                        echo "This is another kind of device"
+                    fi
+
+                    echo "=============================="
+                fi
             fi
 
         fi
@@ -212,3 +243,10 @@ utils_find_pis() {
     rm ~/scan.txt
 }
 
+# Do an Rsync operation to all visible Raspberry Pis
+utils_batch_rsync() {
+    utils_find_pis ip_list | while read ip; do
+        echo "IP Address: $ip"
+        rsync -avh --exclude ".*" ~ $ip:
+    done
+}
