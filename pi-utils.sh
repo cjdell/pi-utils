@@ -274,7 +274,7 @@ utils_rsync() {
     
     echo "IP Address: $ip"
     echo "Copying $path..."
-    rsync -avh --exclude ".*" --exclude "Sync" -e "ssh" --rsync-path="sudo rsync" $path $ip:$dest_path
+    rsync -avh --delete --exclude "Sync" --exclude ".sync" --exclude ".cache" --exclude ".local" -e "ssh" --rsync-path="sudo rsync" $path $ip:$dest_path
 }
 
 # Do an Rsync operation to all visible Raspberry Pis
