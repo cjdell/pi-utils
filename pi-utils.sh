@@ -243,10 +243,43 @@ utils_find_pis() {
     rm ~/scan.txt
 }
 
+# Rsync a given directory (defaults to the home directory)
+utils_rsync() {
+    if [ -n $1 ]; then
+        ip=$1
+    else
+        echo "Enter IP address of Raspberry Pi to rsync to: "
+        read ip
+    fi
+        
+    # Check for an argument
+    if [ -n "$2" ]; then
+        path=$2
+    else
+        path=~
+    fi
+    
+    # Qualify the path if necessary
+    if [ ${path:0:1} != "/" ]; then
+        path=$(pwd)/$path
+    fi
+    
+    # Trim ending slash
+    if [ ${path:(-1)} == "/" ]; then
+        path=${path:0:-1}
+    fi
+    
+    # Get the destination path
+    dest_path=$(dirname $path)
+    
+    echo "IP Address: $ip"
+    echo "Copying $path..."
+    rsync -avh --exclude ".*" -e "ssh" --rsync-path="sudo rsync" $path $ip:$dest_path
+}
+
 # Do an Rsync operation to all visible Raspberry Pis
 utils_batch_rsync() {
     utils_find_pis ip_list | while read ip; do
-        echo "IP Address: $ip"
-        rsync -avh --exclude ".*" ~ $ip:
+        utils_rsync $ip $1
     done
 }
